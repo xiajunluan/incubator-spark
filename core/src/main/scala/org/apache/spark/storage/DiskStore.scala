@@ -57,16 +57,21 @@ private class DiskStore(blockManager: BlockManager, diskManager: DiskBlockManage
 
   override def putValues(
       blockId: BlockId,
-      values: ArrayBuffer[Any],
+      values: Either[ArrayBuffer[Any], Iterator[Any]],
       level: StorageLevel,
       returnValues: Boolean)
     : PutResult = {
 
     logDebug("Attempting to write values for block " + blockId)
+    var iterator: Iterator[Any] = null
+    values match {
+      case Right(iter) => iterator = iter
+      case Left(arrayBuffer) => iterator = arrayBuffer.iterator
+    }
     val startTime = System.currentTimeMillis
     val file = diskManager.getFile(blockId)
     val outputStream = new FileOutputStream(file)
-    blockManager.dataSerializeStream(blockId, outputStream, values.iterator)
+    blockManager.dataSerializeStream(blockId, outputStream, iterator)
     val length = file.length
 
     val timeTaken = System.currentTimeMillis - startTime
