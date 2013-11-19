@@ -53,7 +53,7 @@ class CacheManagerSuite extends FunSuite with BeforeAndAfter with EasyMockSugar 
   test("get uncached rdd") {
     expecting {
       blockManager.get(RDDBlockId(0, 0)).andReturn(None)
-      blockManager.put(RDDBlockId(0, 0), ArrayBuffer[Any](1, 2, 3, 4), StorageLevel.MEMORY_ONLY,
+      blockManager.put(RDDBlockId(0, 0), Iterator[Any](1, 2, 3, 4), StorageLevel.MEMORY_ONLY,
         true).andReturn(0)
     }
 
