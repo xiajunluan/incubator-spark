@@ -18,6 +18,7 @@
 package org.apache.spark.scheduler.cluster
 
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.LinkedHashSet
 
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet}
 
@@ -52,6 +53,7 @@ class CoarseGrainedSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Ac
     private val executorActor = new HashMap[String, ActorRef]
     private val executorAddress = new HashMap[String, Address]
     private val executorHost = new HashMap[String, String]
+    private val lruExecutorId = new LinkedHashSet[String]
     private val freeCores = new HashMap[String, Int]
     private val actorToExecutorId = new HashMap[ActorRef, String]
     private val addressToExecutorId = new HashMap[Address, String]
@@ -76,6 +78,7 @@ class CoarseGrainedSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Ac
           context.watch(sender)
           executorActor(executorId) = sender
           executorHost(executorId) = Utils.parseHostPort(hostPort)._1
+          lruExecutorId.add(executorId)
           freeCores(executorId) = cores
           executorAddress(executorId) = sender.path.address
           actorToExecutorId(sender) = executorId
@@ -131,7 +134,7 @@ class CoarseGrainedSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Ac
     // Make fake resource offers on all executors
     def makeOffers() {
       launchTasks(scheduler.resourceOffers(
-        executorHost.toArray.map {case (id, host) => new WorkerOffer(id, host, freeCores(id))}))
+        lruExecutorId.toArray.map {case (id: String) => new WorkerOffer(id, executorHost(id), freeCores(id))}))
     }
 
     // Make fake resource offers on just one executor
@@ -144,6 +147,8 @@ class CoarseGrainedSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Ac
     def launchTasks(tasks: Seq[Seq[TaskDescription]]) {
       for (task <- tasks.flatten) {
         freeCores(task.executorId) -= 1
+        lruExecutorId.remove(task.executorId)
+        lruExecutorId.add(task.executorId)
         executorActor(task.executorId) ! LaunchTask(task)
       }
     }
@@ -157,6 +162,7 @@ class CoarseGrainedSchedulerBackend(scheduler: ClusterScheduler, actorSystem: Ac
         addressToExecutorId -= executorAddress(executorId)
         executorActor -= executorId
         executorHost -= executorId
+        lruExecutorId.remove(executorId)
         freeCores -= executorId
         totalCoreCount.addAndGet(-numCores)
         scheduler.executorLost(executorId, SlaveLost(reason))
